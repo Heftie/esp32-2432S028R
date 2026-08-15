@@ -21,6 +21,65 @@ static const char *TAG="demo";
 
 lv_obj_t *lbl_counter;
 
+
+typedef struct {
+    lv_obj_t *label_title;
+    lv_obj_t *label_value;
+    lv_obj_t *label_unit;
+} multimeter_ui_t;
+
+multimeter_ui_t ui;
+
+void multimeter_create_ui(void)
+{
+    lv_obj_t *scr = lv_scr_act();
+
+    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+
+    // Titel
+    ui.label_title = lv_label_create(scr);
+    lv_label_set_text(ui.label_title, "DC Voltage");
+    lv_obj_set_style_text_color(ui.label_title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(ui.label_title, &lv_font_montserrat_20, 0);
+    lv_obj_align(ui.label_title, LV_ALIGN_TOP_MID, 0, 10);
+
+    // Wert
+    ui.label_value = lv_label_create(scr);
+    lv_label_set_text(ui.label_value, "0.00");
+    lv_obj_set_style_text_color(ui.label_value, lv_color_hex(0x00FF00), 0);
+    lv_obj_set_style_text_font(ui.label_value, &lv_font_montserrat_28, 0);
+    lv_obj_align(ui.label_value, LV_ALIGN_CENTER, -20, 20);
+
+    // Einheit
+    ui.label_unit = lv_label_create(scr);
+    lv_label_set_text(ui.label_unit, "V");
+    lv_obj_set_style_text_color(ui.label_unit, lv_color_white(), 0);
+    lv_obj_set_style_text_font(ui.label_unit, &lv_font_montserrat_28, 0);
+    lv_obj_align_to(ui.label_unit, ui.label_value, LV_ALIGN_OUT_RIGHT_MID, 10, 0);
+}
+
+void multimeter_update(float value, const char *unit)
+{
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.2f", value);
+
+    lv_label_set_text(ui.label_value, buf);
+    lv_label_set_text(ui.label_unit, unit);
+
+    // Startfarbe = grün
+    lv_color_t color = lv_color_hex(0x00FF00);
+
+    if (value > 10.0) {
+        color = lv_color_hex(0xFFFF00); // gelb
+    }
+
+    if (value > 20.0) {
+        color = lv_color_hex(0xFF0000); // rot
+    }
+
+    lv_obj_set_style_text_color(ui.label_value, color, 0);
+}
+
 void ui_event_Screen(lv_event_t *e)
 {
 static uint8_t pos=1;
@@ -80,13 +139,13 @@ static esp_err_t app_lvgl_main(void)
 
 void app_main(void)
 {
-esp_lcd_panel_io_handle_t lcd_io;
-esp_lcd_panel_handle_t lcd_panel;
-esp_lcd_touch_handle_t tp;
-lvgl_port_touch_cfg_t touch_cfg;
-lv_display_t *lvgl_display = NULL;
-char buf[16];
-uint16_t n = 0;
+    esp_lcd_panel_io_handle_t lcd_io;
+    esp_lcd_panel_handle_t lcd_panel;
+    esp_lcd_touch_handle_t tp;
+    lvgl_port_touch_cfg_t touch_cfg;
+    lv_display_t *lvgl_display = NULL;
+    char buf[16];
+    uint16_t n = 0;
 
     ESP_ERROR_CHECK(lcd_display_brightness_init());
 
@@ -107,20 +166,34 @@ uint16_t n = 0;
 
     ESP_ERROR_CHECK(lcd_display_brightness_set(75));
     ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_90));
-    ESP_ERROR_CHECK(app_lvgl_main());
+    //ESP_ERROR_CHECK(app_lvgl_main());
 
+    multimeter_create_ui();
+     float v = 0.0;
+     while (1)
+    {
+        v += 0.5;
+        if (v > 25) v = 0.0;
+
+        multimeter_update(v, "V");
+
+        lv_timer_handler();   // wichtig!
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }   
+    /*
     while(42)
     {
         sprintf(buf, "%04d", n++);
-
+        
         if (lvgl_port_lock(0))
         {
             lv_label_set_text(lbl_counter, buf);
-
+            
             lvgl_port_unlock();
         }
-
+        
         vTaskDelay(125 / portTICK_PERIOD_MS);
     }
+    */
     vTaskDelay(portMAX_DELAY);
 }
