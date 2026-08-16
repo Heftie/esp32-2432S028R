@@ -21,7 +21,7 @@ Sources: [witnessmenow/ESP32-Cheap-Yellow-Display schematic (MCU board)](https:/
 | RST (Reset) | TFT_RST | -1 on stock wiring (tied to EN) — **this project drives GPIO 4 as `LCD_RESET` instead** (see note below) |
 | Backlight (BL) | TFT_BL | GPIO 21 |
 
-> **This project's deviation:** [`hardware.h`](main/hardware.h) defines `LCD_RESET` as `GPIO_NUM_4` and passes it to `reset_gpio_num` in [`lcd.c`](main/lcd.c). On stock CYD wiring GPIO 4 is the RGB LED's red channel, not a display reset line — the panel's actual reset happens via the EN pin at power-on and the ILI9341/ST7789 software-reset command sent during `esp_lcd_panel_init()`. Toggling GPIO 4 has no effect on the display; it just blips the red LED at boot. Harmless here since this project never uses the RGB LED, but worth knowing if you ever wire up the LED — it'll flicker on every display init.
+> **This project's deviation:** [`hardware.h`](main/hardware.h) defines `LCD_RESET` as `GPIO_NUM_4` and passes it to `reset_gpio_num` in [`lcd.c`](main/lcd.c). On stock CYD wiring GPIO 4 is the RGB LED's red channel, not a display reset line — the panel's actual reset happens via the EN pin at power-on and the ILI9341/ST7789 software-reset command sent during `esp_lcd_panel_init()`. Toggling GPIO 4 has no effect on the display; it just blips the red LED at boot/reset. Since this project also drives the RGB LED on the same pin (`RGB_LED_RED` in `hardware.h`), the two definitions share GPIO 4 — harmlessly, because the `LCD_RESET` role is a no-op. Just expect the red LED to blip on every display init.
 
 ### 1.2 Resistive Touchscreen (XPT2046, SPI — VSPI bus, separate from TFT SPI)
 
@@ -41,7 +41,7 @@ Sources: [witnessmenow/ESP32-Cheap-Yellow-Display schematic (MCU board)](https:/
 | Green | GPIO 16 |
 | Blue | GPIO 17 |
 
-> LOW = ON, HIGH = OFF (inverted logic). Not used anywhere in this project's code — but GPIO 4 (red channel) is claimed by `LCD_RESET` (see §1.1 note), so only green/blue remain genuinely free if you want to drive the LED.
+> LOW = ON, HIGH = OFF (inverted logic). This project drives all three channels via `rgb_led_init()`/`rgb_led_set_rgb()` (see `main/hardware.h`, `components/rgb_led`). GPIO 4 (red channel) is also labeled `LCD_RESET` (see §1.1 note), but that's a no-op for the display, so red is genuinely usable alongside green/blue.
 
 ### 1.4 MicroSD Card Slot (SPI — shares VSPI bus with touchscreen)
 
@@ -107,7 +107,7 @@ Sources: [witnessmenow/ESP32-Cheap-Yellow-Display schematic (MCU board)](https:/
 | GPIO 1 | TX — CH340 USB-serial (P1 connector) | Output | ⚠️ Shared w/ USB serial |
 | GPIO 2 | TFT_DC (Data/Command) | Output | ❌ Used by display |
 | GPIO 3 | RX — CH340 USB-serial (P1 connector) | Input | ⚠️ Shared w/ USB serial, RX quirk |
-| GPIO 4 | RGB LED — Red channel (stock) / `LCD_RESET` (this project) | Output | ❌ Repurposed as (inert) TFT reset pin — see §1.1 |
+| GPIO 4 | RGB LED — Red channel (stock); also labeled `LCD_RESET` in this project (no-op for display, see §1.1) | Output | ❌ Used by LED |
 | GPIO 5 | MicroSD CS | Output | ❌ Used by SD card |
 | GPIO 12 | TFT_MISO | Input | ❌ Used by display |
 | GPIO 13 | TFT_MOSI | Output | ❌ Used by display |

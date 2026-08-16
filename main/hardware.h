@@ -53,10 +53,12 @@
 #define UART_LINK_RXD   GPIO_NUM_22
 #define UART_LINK_BAUD  115200
 
-// Onboard RGB LED (active LOW). Red shares GPIO 4 with LCD_RESET (see
-// ESP32-CYD-Pinout.md sections 1.1/1.3), so it's left unconfigured here;
-// green/blue are genuinely free on stock wiring.
-#define RGB_LED_RED        (gpio_num_t) GPIO_NUM_NC
+// Onboard RGB LED (active LOW). Red is GPIO 4, which this project also
+// labels LCD_RESET above — but GPIO 4 isn't actually wired to a display
+// reset line (the panel resets via EN at power-on plus the software reset
+// command in esp_lcd_panel_init(), see ESP32-CYD-Pinout.md sections 1.1/1.3).
+// So driving it as the red channel here is safe and doesn't affect the display.
+#define RGB_LED_RED        (gpio_num_t) GPIO_NUM_4
 #define RGB_LED_GREEN      (gpio_num_t) GPIO_NUM_16
 #define RGB_LED_BLUE       (gpio_num_t) GPIO_NUM_17
 #define RGB_LED_ACTIVE_LOW (true)

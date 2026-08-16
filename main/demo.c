@@ -288,8 +288,28 @@ void app_main(void)
     //multimeter_create_ui();
      float v = 0.0;
      uint32_t loop_count = 0;
+     uint32_t led_counter = 0;
      while (1)
     {
+        led_counter += 1;
+        switch (led_counter)
+        {
+        case 1:
+            rgb_led_set_rgb(0xFF, 0x00, 0x00);
+            break;
+        case 20:
+            rgb_led_set_rgb(0x00, 0xFF, 0x00);
+            break;
+        case 30:
+            rgb_led_set_rgb(0x00, 0x00, 0xFF);
+            break;
+
+        default:
+
+            break;
+        }
+        if(led_counter > 40) led_counter = 0;
+
         v += 0.5;
         if (v > 25) v = 0.0;
 
