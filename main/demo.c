@@ -16,6 +16,10 @@
 
 #include "lcd.h"
 #include "touch.h"
+#include "hardware.h"
+#include "data_hub.h"
+#include "uart_link.h"
+#include "rgb_led.h"
 
 static const char *TAG="demo";
 
@@ -80,6 +84,81 @@ void multimeter_update(float value, const char *unit)
     lv_obj_set_style_text_color(ui.label_value, color, 0);
 }
 
+typedef struct {
+    lv_obj_t *area;
+    lv_obj_t *label;
+} touch_test_ui_t;
+
+touch_test_ui_t touch_test_ui;
+
+static void touch_test_draw_cb(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+    if (indev == NULL) return;
+
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+
+    lvgl_port_lock(0);
+
+    lv_obj_t *dot = lv_obj_create(touch_test_ui.area);
+    lv_obj_remove_style_all(dot);
+    lv_obj_set_size(dot, 6, 6);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot, lv_color_hex(0x00FF00), 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(dot, 0, 0);
+    lv_obj_set_pos(dot, point.x - 3, point.y - 3);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "X:%ld  Y:%ld", (long)point.x, (long)point.y);
+    lv_label_set_text(touch_test_ui.label, buf);
+
+    lvgl_port_unlock();
+}
+
+static void touch_test_clear_cb(lv_event_t *e)
+{
+    lvgl_port_lock(0);
+    lv_obj_clean(touch_test_ui.area);
+    lvgl_port_unlock();
+}
+
+void touch_test_create_ui(void)
+{
+    lvgl_port_lock(0);
+
+    lv_obj_t *scr = lv_scr_act();
+    lv_obj_clean(scr);
+    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
+
+    // Ganzflächiger Bereich, der Touch-Punkte als Punkte anzeigt
+    touch_test_ui.area = lv_obj_create(scr);
+    lv_obj_remove_style_all(touch_test_ui.area);
+    lv_obj_set_size(touch_test_ui.area, lv_pct(100), lv_pct(100));
+    lv_obj_set_pos(touch_test_ui.area, 0, 0);
+    lv_obj_add_flag(touch_test_ui.area, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(touch_test_ui.area, touch_test_draw_cb, LV_EVENT_PRESSING, NULL);
+
+    // Anzeige der aktuellen Touch-Koordinaten
+    touch_test_ui.label = lv_label_create(scr);
+    lv_label_set_text(touch_test_ui.label, "Bildschirm beruehren zum Testen");
+    lv_obj_set_style_text_color(touch_test_ui.label, lv_color_white(), 0);
+    lv_obj_align(touch_test_ui.label, LV_ALIGN_TOP_MID, 0, 5);
+
+    // Button zum Loeschen der Punkte
+    lv_obj_t *btn_clear = lv_button_create(scr);
+    lv_obj_set_size(btn_clear, 80, 35);
+    lv_obj_align(btn_clear, LV_ALIGN_BOTTOM_MID, 0, -5);
+    lv_obj_add_event_cb(btn_clear, touch_test_clear_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *lbl_clear = lv_label_create(btn_clear);
+    lv_label_set_text(lbl_clear, "Clear");
+    lv_obj_center(lbl_clear);
+
+    lvgl_port_unlock();
+}
+
 void ui_event_Screen(lv_event_t *e)
 {
 static uint8_t pos=1;
@@ -94,6 +173,21 @@ static uint8_t pos=1;
     }
 }
 
+
+static void dump_data_hub_channels(void)
+{
+    data_hub_channel_info_t channels[DATA_HUB_MAX_CHANNELS];
+    size_t n = data_hub_list_channels(channels, DATA_HUB_MAX_CHANNELS);
+
+    if (n == 0) {
+        ESP_LOGI(TAG, "data_hub: no channels yet");
+        return;
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        ESP_LOGI(TAG, "data_hub: %s = %.2f %s", channels[i].name, channels[i].latest_value, channels[i].unit);
+    }
+}
 
 static esp_err_t app_lvgl_main(void)
 {
@@ -168,32 +262,45 @@ void app_main(void)
     ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_90));
     //ESP_ERROR_CHECK(app_lvgl_main());
 
-    multimeter_create_ui();
+    data_hub_init();
+
+    const uart_link_config_t uart_cfg = {
+        .uart_num = UART_NUM_2,
+        .txd_gpio = UART_LINK_TXD,
+        .rxd_gpio = UART_LINK_RXD,
+        .baud_rate = UART_LINK_BAUD,
+    };
+    if (uart_link_init(&uart_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "uart_link_init failed");
+    }
+
+    const rgb_led_config_t rgb_led_cfg = {
+        .red_gpio = RGB_LED_RED,
+        .green_gpio = RGB_LED_GREEN,
+        .blue_gpio = RGB_LED_BLUE,
+        .active_low = RGB_LED_ACTIVE_LOW,
+    };
+    if (rgb_led_init(&rgb_led_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "rgb_led_init failed");
+    }
+
+    touch_test_create_ui();
+    //multimeter_create_ui();
      float v = 0.0;
+     uint32_t loop_count = 0;
      while (1)
     {
         v += 0.5;
         if (v > 25) v = 0.0;
 
-        multimeter_update(v, "V");
+        //multimeter_update(v, "V");
 
-        lv_timer_handler();   // wichtig!
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }   
-    /*
-    while(42)
-    {
-        sprintf(buf, "%04d", n++);
-        
-        if (lvgl_port_lock(0))
-        {
-            lv_label_set_text(lbl_counter, buf);
-            
-            lvgl_port_unlock();
+        if (++loop_count % 20 == 0) {
+            dump_data_hub_channels();
         }
-        
-        vTaskDelay(125 / portTICK_PERIOD_MS);
+
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
-    */
+
     vTaskDelay(portMAX_DELAY);
 }

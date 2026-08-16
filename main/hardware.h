@@ -47,3 +47,16 @@
 
 #define TOUCH_MIRROR_X (true)
 #define TOUCH_MIRROR_Y (false)
+
+// UART link to companion MCU (SCPI-style text protocol, see components/uart_link)
+#define UART_LINK_TXD   GPIO_NUM_27
+#define UART_LINK_RXD   GPIO_NUM_22
+#define UART_LINK_BAUD  115200
+
+// Onboard RGB LED (active LOW). Red shares GPIO 4 with LCD_RESET (see
+// ESP32-CYD-Pinout.md sections 1.1/1.3), so it's left unconfigured here;
+// green/blue are genuinely free on stock wiring.
+#define RGB_LED_RED        (gpio_num_t) GPIO_NUM_NC
+#define RGB_LED_GREEN      (gpio_num_t) GPIO_NUM_16
+#define RGB_LED_BLUE       (gpio_num_t) GPIO_NUM_17
+#define RGB_LED_ACTIVE_LOW (true)
