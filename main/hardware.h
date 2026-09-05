@@ -28,11 +28,18 @@
 
 // Touch (XPT2046) shares the LCD's SPI bus/pins on this board (CLK/MOSI/MISO
 // are the LCD_SPI_* pins below) — only CS and IRQ are dedicated touch pins.
-// touch.c must NOT call spi_bus_initialize() itself since app_lcd_init()
-// already brought up LCD_SPI_HOST before touch_init() runs (see demo.c).
+// touch_config_t.bus_already_initialized is set for this board in demo.c,
+// so components/touch never calls spi_bus_initialize() itself here — the
+// lcd component already brought up LCD_SPI_HOST before touch_init() runs.
 #define TOUCH_SPI_SHARED_WITH_LCD 1
-#define TOUCH_CLOCK_HZ ESP_LCD_TOUCH_SPI_CLOCK_HZ
+#define TOUCH_CLOCK_HZ (1 * 1000 * 1000) // XPT2046 SPI clock; matches the driver's own ESP_LCD_TOUCH_SPI_CLOCK_HZ
 #define TOUCH_SPI      LCD_SPI_HOST
+// Unused (bus_already_initialized is set instead) — only defined so
+// demo.c can build one unconditional touch_config_t literal regardless
+// of which board is selected.
+#define TOUCH_SPI_CLK  (gpio_num_t) GPIO_NUM_NC
+#define TOUCH_SPI_MOSI (gpio_num_t) GPIO_NUM_NC
+#define TOUCH_SPI_MISO (gpio_num_t) GPIO_NUM_NC
 #define TOUCH_CS       (gpio_num_t) GPIO_NUM_33
 #define TOUCH_DC       (gpio_num_t) GPIO_NUM_NC
 #define TOUCH_RST      (gpio_num_t) GPIO_NUM_NC
@@ -40,10 +47,6 @@
 
 #define TOUCH_MIRROR_X (true)
 #define TOUCH_MIRROR_Y (true)
-
-// UART link to companion MCU (SCPI-style text protocol, see components/uart_link)
-// TXD moved from GPIO27 (2.8" board) since GPIO27 now drives the backlight here.
-#define UART_LINK_TXD   GPIO_NUM_21
 
 #elif defined(BOARD_CYD_2432S028R_ILI9341) || defined(BOARD_CYD_2432S028R_ST7789)
 
@@ -71,10 +74,11 @@
 #define TOUCH_Y_RES_MAX 320
 
 // Touch (XPT2046) runs on its own, fully independent SPI bus on this board
-// (unlike the 3.5" board, which shares the LCD's bus) — touch.c calls
+// (unlike the 3.5" board, which shares the LCD's bus) — demo.c leaves
+// touch_config_t.bus_already_initialized false, so components/touch calls
 // spi_bus_initialize() for TOUCH_SPI itself.
 #define TOUCH_SPI_SHARED_WITH_LCD 0
-#define TOUCH_CLOCK_HZ ESP_LCD_TOUCH_SPI_CLOCK_HZ
+#define TOUCH_CLOCK_HZ (1 * 1000 * 1000) // XPT2046 SPI clock; matches the driver's own ESP_LCD_TOUCH_SPI_CLOCK_HZ
 #define TOUCH_SPI      SPI3_HOST
 #define TOUCH_SPI_CLK  (gpio_num_t) GPIO_NUM_25
 #define TOUCH_SPI_MOSI (gpio_num_t) GPIO_NUM_32
@@ -87,17 +91,13 @@
 #define TOUCH_MIRROR_X (true)
 #define TOUCH_MIRROR_Y (false)
 
-// UART link to companion MCU (SCPI-style text protocol, see components/uart_link)
-#define UART_LINK_TXD   GPIO_NUM_27
-
 #else
-#error "No board selected — uncomment exactly one BOARD_CYD_* define in main/board_config.h"
+#error "No board selected — uncomment exactly one BOARD_CYD_* define in components/board_config/include/board_config.h"
 #endif
 
 #define LCD_BITS_PIXEL     16
 #define LCD_BUF_LINES      30
 #define LCD_DOUBLE_BUFFER  1
-#define LCD_DRAWBUF_SIZE   (LCD_H_RES * LCD_BUF_LINES)
 
 #define LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
 #define LCD_CMD_BITS       (8)
@@ -110,9 +110,6 @@
 #define LCD_CS             (gpio_num_t) GPIO_NUM_15
 #define LCD_RESET          (gpio_num_t) GPIO_NUM_4
 #define LCD_BUSY           (gpio_num_t) GPIO_NUM_NC
-
-#define UART_LINK_RXD   GPIO_NUM_22
-#define UART_LINK_BAUD  115200
 
 // Onboard RGB LED (active LOW). Red is GPIO 4, which this project also
 // labels LCD_RESET above — but GPIO 4 isn't actually wired to a display

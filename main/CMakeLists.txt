@@ -1,5 +1,5 @@
-idf_component_register(SRCS demo.c lcd.c touch.c
+idf_component_register(SRCS demo.c
                     INCLUDE_DIRS "."
-                    REQUIRES esp_driver_ledc data_hub uart_link rgb_led
+                    REQUIRES board_config lcd touch rgb_led web_server ui
                     )
 target_link_libraries(${COMPONENT_LIB} "-u _printf_float")
