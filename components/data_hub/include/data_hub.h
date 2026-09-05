@@ -11,7 +11,11 @@ extern "C" {
 #define DATA_HUB_MAX_CHANNELS 16
 #define DATA_HUB_NAME_LEN     16
 #define DATA_HUB_UNIT_LEN     8
-#define DATA_HUB_HISTORY_LEN  128
+// The single biggest static RAM allocation in the whole binary (16
+// channels * a deep buffer adds up fast) — once WiFi/TLS's own static
+// DRAM footprint is in the picture too (see components/web_server), this
+// needs to stay modest or the link overflows dram0_0_seg.
+#define DATA_HUB_HISTORY_LEN  32
 
 typedef struct {
     char name[DATA_HUB_NAME_LEN];

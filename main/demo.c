@@ -19,6 +19,8 @@
 #include "data_hub.h"
 #include "uart_link.h"
 #include "rgb_led.h"
+#include "web_server.h"
+#include "ui.h"
 
 static const char *TAG="demo";
 
@@ -52,6 +54,16 @@ void app_main(void)
 
     data_hub_init();
 
+    // Shown as early as possible, before any of the slower/fallible
+    // hardware bring-up below (UART handshake, WiFi negotiation — the
+    // latter alone can take up to 20s falling back to the setup AP).
+    // data_hub_init() above is this call's only hard prerequisite —
+    // uart_link/web_server are polled through their own refresh timers
+    // via plain static-default reads that are safe to see before that
+    // subsystem's own _init() has even run, so the home/wifi_settings
+    // screens just show "not there yet" until each one catches up.
+    ui_init();
+
     const uart_link_config_t uart_cfg = {
         .uart_num = UART_NUM_2,
         .txd_gpio = UART_LINK_TXD,
@@ -72,17 +84,12 @@ void app_main(void)
         ESP_LOGE(TAG, "rgb_led_init failed");
     }
 
-    lvgl_port_lock(0);
-
-    lv_obj_t *scr = lv_scr_act();
-    lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
-
-    lv_obj_t *label = lv_label_create(scr);
-    lv_label_set_text(label, "Hello LVGL 9 and esp_lvgl_port!");
-    lv_obj_set_style_text_color(label, lv_color_white(), LV_STATE_DEFAULT);
-    lv_obj_center(label);
-
-    lvgl_port_unlock();
+    const web_server_config_t web_cfg = {
+        .http_port = 0, // default 80
+    };
+    if (web_server_init(&web_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "web_server_init failed");
+    }
 
     while (1)
     {
