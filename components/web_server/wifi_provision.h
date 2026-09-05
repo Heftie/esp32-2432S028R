@@ -2,12 +2,34 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include <esp_err.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define WIFI_PROVISION_SCAN_MAX 20
+
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+    bool secure;
+} wifi_provision_scan_result_t;
+
+// Scans for nearby networks — blocks for the scan's duration (roughly
+// 1-3s), so call this from a background task, never from the LVGL task
+// or an HTTP handler you need to stay responsive. Works whether the WiFi
+// driver is currently running STA (connected or not), the setup AP
+// (APSTA), or both. Hidden networks (empty SSID) are dropped — there's
+// nothing to show or select for one; a caller that wants to join a
+// hidden network needs its own manual-SSID-entry path regardless.
+// Results are deduped by SSID (multiple APs/channels for one network
+// keep only the strongest reading) and sorted strongest-first. Returns
+// the number written to `out`, capped at max_out and
+// WIFI_PROVISION_SCAN_MAX.
+size_t wifi_provision_scan(wifi_provision_scan_result_t *out, size_t max_out);
 
 // Reads stored WiFi credentials from NVS. Returns false if none are stored
 // yet. pass may come back as an empty string for an open network.

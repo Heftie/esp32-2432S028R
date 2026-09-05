@@ -54,6 +54,18 @@ static httpd_handle_t s_httpd;
 static uint16_t s_http_port;
 static EventGroupHandle_t s_wifi_event_group;
 
+// Set for the duration of web_server_scan_wifi() below. ESP32 has one
+// 2.4GHz radio, so a full-channel scan necessarily leaves whatever
+// channel STA is connected on — the AP (or STA itself) can and does
+// treat that as a dropped link, firing WIFI_EVENT_STA_DISCONNECTED right
+// in the middle of the scan. Reconnecting immediately then collides with
+// the still-running scan (esp_wifi_scan_start() fails outright with
+// ESP_ERR_WIFI_STATE, "STA is connecting"), which used to spiral into
+// repeated failures and eventually the 20s connect-timeout fallback to
+// the setup AP. Deferring the reconnect until the scan itself finishes
+// (see web_server_scan_wifi()) avoids that fight entirely.
+static volatile bool s_scan_in_progress = false;
+
 // --- Wi-Fi / SNTP / mDNS bring-up ------------------------------------------
 
 static void sntp_sync_cb(struct timeval *tv)
@@ -116,6 +128,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
     if (id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (s_scan_in_progress) {
+            ESP_LOGI(TAG, "Wi-Fi disconnected (scan in progress), deferring reconnect");
+            return;
+        }
+        if (s_wifi_mode == WEB_SERVER_WIFI_AP) {
+            // Already fell back to the setup AP — the stored network
+            // didn't work within the initial connect window, so
+            // retrying it here just burns airtime the SoftAP needs for
+            // its own beacons/probe responses (one radio, shared with
+            // STA), which is what was making the portal itself flaky to
+            // reach. Leave STA idle; the next real attempt happens after
+            // new credentials are saved and the device reboots.
+            return;
+        }
         ESP_LOGW(TAG, "Wi-Fi disconnected, retrying");
         esp_wifi_connect();
     }
@@ -309,4 +335,52 @@ static void forget_wifi_task(void *arg)
 void web_server_forget_wifi(void)
 {
     xTaskCreate(forget_wifi_task, "wifi_forget", 2048, NULL, 5, NULL);
+}
+
+size_t web_server_scan_wifi(web_server_wifi_scan_result_t *out, size_t max_out)
+{
+    bool was_sta = (s_wifi_mode == WEB_SERVER_WIFI_STA);
+
+    s_scan_in_progress = true;
+    wifi_provision_scan_result_t raw[WIFI_PROVISION_SCAN_MAX];
+    if (max_out > WIFI_PROVISION_SCAN_MAX) {
+        max_out = WIFI_PROVISION_SCAN_MAX;
+    }
+    size_t n = wifi_provision_scan(raw, max_out);
+    s_scan_in_progress = false;
+
+    if (was_sta) {
+        // The scan very likely knocked us off our own AP for its
+        // duration (see s_scan_in_progress's comment above) — our own
+        // auto-reconnect sat that out, so force one clean attempt now
+        // that the scan itself is done rather than leaving it to notice
+        // on its own.
+        esp_wifi_connect();
+    }
+
+    for (size_t i = 0; i < n; i++) {
+        strncpy(out[i].ssid, raw[i].ssid, sizeof(out[i].ssid) - 1);
+        out[i].ssid[sizeof(out[i].ssid) - 1] = '\0';
+        out[i].rssi = raw[i].rssi;
+        out[i].secure = raw[i].secure;
+    }
+    return n;
+}
+
+static void connect_wifi_task(void *arg)
+{
+    // Same reasoning as forget_wifi_task above — give the caller's UI
+    // time to show feedback before esp_restart() tears the board down.
+    vTaskDelay(pdMS_TO_TICKS(600));
+    esp_restart();
+}
+
+esp_err_t web_server_connect_wifi(const char *ssid, const char *pass)
+{
+    esp_err_t err = wifi_provision_save(ssid, pass);
+    if (err != ESP_OK) {
+        return err;
+    }
+    xTaskCreate(connect_wifi_task, "wifi_connect_reboot", 2048, NULL, 5, NULL);
+    return ESP_OK;
 }

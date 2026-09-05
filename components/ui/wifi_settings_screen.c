@@ -23,6 +23,12 @@ static void wifi_settings_back_cb(lv_event_t *e)
     screen_pop();
 }
 
+static void wifi_settings_connect_cb(lv_event_t *e)
+{
+    s_wifi_settings_screen_active = false;
+    screen_push("wifi_connect");
+}
+
 static void wifi_settings_forget_disarm_cb(lv_timer_t *timer)
 {
     s_wifi_forget_armed = false;
@@ -137,6 +143,13 @@ void wifi_settings_screen_create(void)
     lv_label_set_text(s_wifi_status_label, "Loading status...");
     lv_obj_set_style_text_color(s_wifi_status_label, lv_color_white(), 0);
     lv_obj_set_style_text_line_space(s_wifi_status_label, 4, 0);
+
+    lv_obj_t *connect_btn = lv_button_create(body);
+    lv_obj_set_size(connect_btn, lv_pct(100), 40);
+    lv_obj_add_event_cb(connect_btn, wifi_settings_connect_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *connect_label = lv_label_create(connect_btn);
+    lv_label_set_text(connect_label, "Connect to WiFi");
+    lv_obj_center(connect_label);
 
     s_wifi_forget_btn = lv_button_create(body);
     lv_obj_set_size(s_wifi_forget_btn, lv_pct(100), 40);

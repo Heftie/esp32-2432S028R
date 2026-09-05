@@ -14,6 +14,7 @@
 #include <esp_http_server.h>
 #include <nvs_flash.h>
 #include <lwip/sockets.h>
+#include <cJSON.h>
 
 static const char *TAG = "wifi_provision";
 
@@ -237,6 +238,102 @@ static esp_err_t portal_save_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+size_t wifi_provision_scan(wifi_provision_scan_result_t *out, size_t max_out)
+{
+    if (max_out > WIFI_PROVISION_SCAN_MAX) {
+        max_out = WIFI_PROVISION_SCAN_MAX;
+    }
+
+    const wifi_scan_config_t scan_cfg = { .show_hidden = false };
+
+    // ESP_ERR_WIFI_STATE ("STA is connecting, scan are not allowed") is
+    // transient — it means STA is mid-handshake right now, which clears
+    // within a second or two either way. Retry briefly rather than
+    // reporting "no networks" for what's really just bad timing.
+    esp_err_t scan_err = ESP_FAIL;
+    for (int attempt = 0; attempt < 6; attempt++) {
+        scan_err = esp_wifi_scan_start(&scan_cfg, true);
+        if (scan_err == ESP_OK || scan_err != ESP_ERR_WIFI_STATE) {
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+    if (scan_err != ESP_OK) {
+        ESP_LOGW(TAG, "esp_wifi_scan_start failed: %s", esp_err_to_name(scan_err));
+        return 0;
+    }
+
+    uint16_t count = WIFI_PROVISION_SCAN_MAX;
+    static wifi_ap_record_t records[WIFI_PROVISION_SCAN_MAX];
+    esp_err_t get_err = esp_wifi_scan_get_ap_records(&count, records);
+    ESP_LOGI(TAG, "scan_get_ap_records: %s, count=%u", esp_err_to_name(get_err), count);
+
+    size_t n = 0;
+    for (uint16_t i = 0; i < count && n < max_out; i++) {
+        const char *ssid = (const char *)records[i].ssid;
+        if (ssid[0] == '\0') {
+            continue;
+        }
+
+        wifi_provision_scan_result_t *existing = NULL;
+        for (size_t j = 0; j < n; j++) {
+            if (strcmp(out[j].ssid, ssid) == 0) {
+                existing = &out[j];
+                break;
+            }
+        }
+        if (existing != NULL) {
+            if (records[i].rssi > existing->rssi) {
+                existing->rssi = records[i].rssi;
+                existing->secure = (records[i].authmode != WIFI_AUTH_OPEN);
+            }
+            continue;
+        }
+
+        strncpy(out[n].ssid, ssid, sizeof(out[n].ssid) - 1);
+        out[n].ssid[sizeof(out[n].ssid) - 1] = '\0';
+        out[n].rssi = records[i].rssi;
+        out[n].secure = (records[i].authmode != WIFI_AUTH_OPEN);
+        n++;
+    }
+
+    // Strongest signal first — plain insertion sort, n is small (<= max_out).
+    for (size_t i = 1; i < n; i++) {
+        wifi_provision_scan_result_t key = out[i];
+        size_t j = i;
+        while (j > 0 && out[j - 1].rssi < key.rssi) {
+            out[j] = out[j - 1];
+            j--;
+        }
+        out[j] = key;
+    }
+
+    return n;
+}
+
+// GET /api/scan — nearby networks, for the portal page's clickable list.
+static esp_err_t portal_scan_handler(httpd_req_t *req)
+{
+    wifi_provision_scan_result_t results[WIFI_PROVISION_SCAN_MAX];
+    size_t n = wifi_provision_scan(results, WIFI_PROVISION_SCAN_MAX);
+
+    cJSON *root = cJSON_CreateArray();
+    for (size_t i = 0; i < n; i++) {
+        cJSON *entry = cJSON_CreateObject();
+        cJSON_AddStringToObject(entry, "ssid", results[i].ssid);
+        cJSON_AddNumberToObject(entry, "rssi", results[i].rssi);
+        cJSON_AddBoolToObject(entry, "secure", results[i].secure);
+        cJSON_AddItemToArray(root, entry);
+    }
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    cJSON_free(json_str);
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 // Wildcard fallback — most OSes probe a handful of well-known paths
 // (/generate_204, /hotspot-detect.html, /ncsi.txt, ...) to decide whether
 // to pop the "sign in to network" prompt. Answering all of them with the
@@ -262,7 +359,12 @@ esp_err_t wifi_provision_start_ap(char *ssid_out, size_t ssid_out_len, char *ip_
     int n = snprintf((char *)ap_cfg.ap.ssid, sizeof(ap_cfg.ap.ssid), "CYD-Setup-%02X%02X", mac[4], mac[5]);
     ap_cfg.ap.ssid_len = (uint8_t)n;
 
-    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_AP);
+    // APSTA rather than plain AP: the STA interface isn't connected to
+    // anything (wifi_bringup_task only reaches this function once STA
+    // already failed or has no stored credentials), but keeping it enabled
+    // alongside the SoftAP is what lets esp_wifi_scan_start() work below —
+    // a bare AP-mode radio can't scan.
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) return err;
     err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
     if (err != ESP_OK) return err;
@@ -294,9 +396,11 @@ esp_err_t wifi_provision_start_ap(char *ssid_out, size_t ssid_out_len, char *ip_
     }
 
     static const httpd_uri_t root_uri = { .uri = "/", .method = HTTP_GET, .handler = portal_root_handler };
+    static const httpd_uri_t scan_uri = { .uri = "/api/scan", .method = HTTP_GET, .handler = portal_scan_handler };
     static const httpd_uri_t save_uri = { .uri = "/api/wifi", .method = HTTP_POST, .handler = portal_save_handler };
     static const httpd_uri_t catchall_uri = { .uri = "/*", .method = HTTP_GET, .handler = portal_catchall_handler };
     httpd_register_uri_handler(s_portal_httpd, &root_uri);
+    httpd_register_uri_handler(s_portal_httpd, &scan_uri);
     httpd_register_uri_handler(s_portal_httpd, &save_uri);
     httpd_register_uri_handler(s_portal_httpd, &catchall_uri);
 

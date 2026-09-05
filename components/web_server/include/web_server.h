@@ -69,6 +69,32 @@ void web_server_sync_ntp_now(void);
 // hasn't landed yet.
 bool web_server_get_wall_clock(time_t *out_epoch_utc);
 
+#define WEB_SERVER_WIFI_SCAN_MAX 20
+
+typedef struct {
+    char ssid[33];
+    int8_t rssi;
+    bool secure;
+} web_server_wifi_scan_result_t;
+
+// Scans for nearby WiFi networks — blocks for the scan's duration
+// (roughly 1-3s), so call this from a background task, never from the
+// LVGL task (it would freeze the UI for that long). Works whether
+// currently connected as STA, running the setup AP, or both. Results are
+// deduped by SSID (strongest reading wins) and sorted strongest-first.
+// Returns the number written to `out`, capped at max_out and
+// WEB_SERVER_WIFI_SCAN_MAX. Intended for an on-device "connect to WiFi"
+// UI screen — the setup portal's own equivalent (GET /api/scan) doesn't
+// go through this, it calls wifi_provision_scan() directly.
+size_t web_server_scan_wifi(web_server_wifi_scan_result_t *out, size_t max_out);
+
+// Saves ssid/pass as the stored network (the same NVS entry the setup
+// portal's form writes) and reboots shortly after returning — the next
+// boot tries it via the normal wifi_provision_load() path. pass may be ""
+// for an open network. Intended for an on-device "connect to WiFi" UI
+// screen, as the local equivalent of submitting the portal form.
+esp_err_t web_server_connect_wifi(const char *ssid, const char *pass);
+
 #ifdef __cplusplus
 }
 #endif
