@@ -11,18 +11,6 @@ extern "C" {
 #define DATA_HUB_MAX_CHANNELS 16
 #define DATA_HUB_NAME_LEN     16
 #define DATA_HUB_UNIT_LEN     8
-// The single biggest static RAM allocation in the whole binary (16
-// channels * a deep buffer adds up fast) — once WiFi/TLS's own static
-// DRAM footprint is in the picture too (see components/web_server), this
-// needs to stay modest or the link overflows dram0_0_seg.
-#define DATA_HUB_HISTORY_LEN  32
-
-typedef struct {
-    char name[DATA_HUB_NAME_LEN];
-    char unit[DATA_HUB_UNIT_LEN];
-    float value;
-    int64_t timestamp_us;
-} data_hub_sample_t;
 
 typedef struct {
     char name[DATA_HUB_NAME_LEN];
@@ -33,16 +21,11 @@ typedef struct {
 
 void data_hub_init(void);
 
-// Registers the channel on first sight. Called only by uart_link.
+// Registers the channel on first sight and overwrites its latest value.
+// Called only by uart_link. This project has no logger/on-device history
+// consumer, so data_hub keeps only the latest sample per channel — not a
+// history buffer.
 void data_hub_publish(const char *name, float value, const char *unit);
-
-// Fills *out with the newest sample for `name`. Returns false if the
-// channel doesn't exist yet.
-bool data_hub_get_latest(const char *name, data_hub_sample_t *out);
-
-// Copies up to max_out samples for `name`, oldest first. Returns the
-// number of samples copied.
-size_t data_hub_get_history(const char *name, data_hub_sample_t *out, size_t max_out);
 
 // Copies up to max_out registered channels' latest state into out.
 // Returns the number of channels copied.

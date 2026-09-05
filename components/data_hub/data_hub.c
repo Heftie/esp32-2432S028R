@@ -14,9 +14,8 @@ typedef struct {
     bool in_use;
     char name[DATA_HUB_NAME_LEN];
     char unit[DATA_HUB_UNIT_LEN];
-    data_hub_sample_t history[DATA_HUB_HISTORY_LEN];
-    size_t head;   // index the next sample will be written to
-    size_t count;  // valid samples, saturates at DATA_HUB_HISTORY_LEN
+    float latest_value;
+    int64_t latest_timestamp_us;
 } data_hub_channel_t;
 
 static data_hub_channel_t s_channels[DATA_HUB_MAX_CHANNELS];
@@ -81,56 +80,10 @@ void data_hub_publish(const char *name, float value, const char *unit)
     }
 
     copy_str(ch->unit, sizeof(ch->unit), unit);
-
-    data_hub_sample_t *slot = &ch->history[ch->head];
-    copy_str(slot->name, sizeof(slot->name), ch->name);
-    copy_str(slot->unit, sizeof(slot->unit), ch->unit);
-    slot->value = value;
-    slot->timestamp_us = esp_timer_get_time();
-
-    ch->head = (ch->head + 1) % DATA_HUB_HISTORY_LEN;
-    if (ch->count < DATA_HUB_HISTORY_LEN) {
-        ch->count++;
-    }
+    ch->latest_value = value;
+    ch->latest_timestamp_us = esp_timer_get_time();
 
     xSemaphoreGive(s_mutex);
-}
-
-bool data_hub_get_latest(const char *name, data_hub_sample_t *out)
-{
-    bool found = false;
-
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-
-    data_hub_channel_t *ch = find_channel_locked(name);
-    if (ch != NULL && ch->count > 0) {
-        size_t last = (ch->head + DATA_HUB_HISTORY_LEN - 1) % DATA_HUB_HISTORY_LEN;
-        *out = ch->history[last];
-        found = true;
-    }
-
-    xSemaphoreGive(s_mutex);
-    return found;
-}
-
-size_t data_hub_get_history(const char *name, data_hub_sample_t *out, size_t max_out)
-{
-    size_t copied = 0;
-
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-
-    data_hub_channel_t *ch = find_channel_locked(name);
-    if (ch != NULL) {
-        size_t n = ch->count < max_out ? ch->count : max_out;
-        size_t oldest = (ch->head + DATA_HUB_HISTORY_LEN - ch->count) % DATA_HUB_HISTORY_LEN;
-        for (size_t i = 0; i < n; i++) {
-            out[i] = ch->history[(oldest + i) % DATA_HUB_HISTORY_LEN];
-        }
-        copied = n;
-    }
-
-    xSemaphoreGive(s_mutex);
-    return copied;
 }
 
 size_t data_hub_list_channels(data_hub_channel_info_t *out, size_t max_out)
@@ -149,15 +102,8 @@ size_t data_hub_list_channels(data_hub_channel_info_t *out, size_t max_out)
 
         copy_str(info->name, sizeof(info->name), ch->name);
         copy_str(info->unit, sizeof(info->unit), ch->unit);
-
-        if (ch->count > 0) {
-            size_t last = (ch->head + DATA_HUB_HISTORY_LEN - 1) % DATA_HUB_HISTORY_LEN;
-            info->latest_value = ch->history[last].value;
-            info->latest_timestamp_us = ch->history[last].timestamp_us;
-        } else {
-            info->latest_value = 0.0f;
-            info->latest_timestamp_us = 0;
-        }
+        info->latest_value = ch->latest_value;
+        info->latest_timestamp_us = ch->latest_timestamp_us;
 
         copied++;
     }
