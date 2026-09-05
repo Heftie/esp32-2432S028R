@@ -17,7 +17,11 @@
 #include <driver/ledc.h>
 #include <driver/spi_master.h>
 
-#ifdef CYD_ILI9341
+#include "board_config.h"
+
+#if defined(BOARD_CYD_3248S035R)
+#include <esp_lcd_st7796.h>
+#elif defined(BOARD_CYD_2432S028R_ILI9341)
 #include <esp_lcd_ili9341.h>
 #endif
 
@@ -124,15 +128,17 @@ esp_err_t app_lcd_init(esp_lcd_panel_io_handle_t *lcd_io, esp_lcd_panel_handle_t
 
     const esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = LCD_RESET,
-        #ifdef CYD_ILI9341
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
-        #else
+        #if defined(BOARD_CYD_2432S028R_ST7789)
         .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        #else
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
         #endif
         .bits_per_pixel = LCD_BITS_PIXEL,
     };
 
-    #ifdef CYD_ILI9341
+    #if defined(BOARD_CYD_3248S035R)
+    esp_err_t r = esp_lcd_new_panel_st7796(*lcd_io, &panel_config, lcd_panel);
+    #elif defined(BOARD_CYD_2432S028R_ILI9341)
     esp_err_t r = esp_lcd_new_panel_ili9341(*lcd_io, &panel_config, lcd_panel);
     #else
     esp_err_t r = esp_lcd_new_panel_st7789(*lcd_io, &panel_config, lcd_panel);
