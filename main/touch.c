@@ -40,6 +40,7 @@ esp_err_t touch_init(esp_lcd_touch_handle_t *tp)
         .lcd_param_bits = 8,
         .flags = { .dc_low_on_data = 0, .octal_mode = 0, .sio_mode = 0, .lsb_first = 0, .cs_high_active = 0 } };
 
+#if !TOUCH_SPI_SHARED_WITH_LCD
     static const int SPI_MAX_TRANSFER_SIZE = 32768;
     const spi_bus_config_t buscfg_touch = { .mosi_io_num = TOUCH_SPI_MOSI,
         .miso_io_num = TOUCH_SPI_MISO,
@@ -54,6 +55,11 @@ esp_err_t touch_init(esp_lcd_touch_handle_t *tp)
         .flags = SPICOMMON_BUSFLAG_SCLK | SPICOMMON_BUSFLAG_MISO | SPICOMMON_BUSFLAG_MOSI | SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_GPIO_PINS,
         .isr_cpu_id = ESP_INTR_CPU_AFFINITY_AUTO,
         .intr_flags = ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM };
+#else
+    // TOUCH_SPI is the same host as LCD_SPI_HOST on this board (touch shares
+    // the LCD's SPI bus, see hardware.h), and app_lcd_init() already
+    // initialized that bus before touch_init() runs — no bus init here.
+#endif
 
     esp_lcd_touch_config_t tp_cfg = {.x_max = LCD_H_RES,
                                    .y_max = LCD_V_RES,
@@ -69,7 +75,9 @@ esp_err_t touch_init(esp_lcd_touch_handle_t *tp)
                                    .process_coordinates = process_coordinates,
                                    .interrupt_callback = NULL};
 
+#if !TOUCH_SPI_SHARED_WITH_LCD
     ESP_ERROR_CHECK(spi_bus_initialize(TOUCH_SPI, &buscfg_touch, SPI_DMA_CH_AUTO));
+#endif
 
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)TOUCH_SPI, &tp_io_config, &tp_io_handle));
     ESP_ERROR_CHECK(esp_lcd_touch_new_spi_xpt2046(tp_io_handle, &tp_cfg, tp));
