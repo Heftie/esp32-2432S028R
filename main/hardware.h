@@ -41,10 +41,6 @@
 #define TOUCH_MIRROR_X (true)
 #define TOUCH_MIRROR_Y (true)
 
-// UART link to companion MCU (SCPI-style text protocol, see components/uart_link)
-// TXD moved from GPIO27 (2.8" board) since GPIO27 now drives the backlight here.
-#define UART_LINK_TXD   GPIO_NUM_21
-
 #elif defined(BOARD_CYD_2432S028R_ILI9341) || defined(BOARD_CYD_2432S028R_ST7789)
 
 // ESP32-2432S028R (2.8", resistive XPT2046 touch on its own SPI bus).
@@ -87,9 +83,6 @@
 #define TOUCH_MIRROR_X (true)
 #define TOUCH_MIRROR_Y (false)
 
-// UART link to companion MCU (SCPI-style text protocol, see components/uart_link)
-#define UART_LINK_TXD   GPIO_NUM_27
-
 #else
 #error "No board selected — uncomment exactly one BOARD_CYD_* define in main/board_config.h"
 #endif
@@ -110,9 +103,6 @@
 #define LCD_CS             (gpio_num_t) GPIO_NUM_15
 #define LCD_RESET          (gpio_num_t) GPIO_NUM_4
 #define LCD_BUSY           (gpio_num_t) GPIO_NUM_NC
-
-#define UART_LINK_RXD   GPIO_NUM_22
-#define UART_LINK_BAUD  115200
 
 // Onboard RGB LED (active LOW). Red is GPIO 4, which this project also
 // labels LCD_RESET above — but GPIO 4 isn't actually wired to a display

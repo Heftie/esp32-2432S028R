@@ -43,9 +43,7 @@ typedef struct {
 // block waiting for the network to come up, so a missing/wrong network
 // doesn't hold up the rest of app_main. Serves:
 //
-//   GET  /          embedded dashboard (index.html): live data_hub channel
-//                   values + a client-side graph, polling /api/data
-//   GET  /api/data  current data_hub channel values, as JSON
+//   GET  /          embedded status page (index.html): device wall clock
 //   GET  /api/time  { synced, epoch } — device wall clock
 esp_err_t web_server_init(const web_server_config_t *config);
 

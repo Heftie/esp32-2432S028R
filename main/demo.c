@@ -16,8 +16,6 @@
 #include "lcd.h"
 #include "touch.h"
 #include "hardware.h"
-#include "data_hub.h"
-#include "uart_link.h"
 #include "rgb_led.h"
 #include "web_server.h"
 #include "ui.h"
@@ -52,27 +50,14 @@ void app_main(void)
     ESP_ERROR_CHECK(lcd_display_brightness_set(75));
     ESP_ERROR_CHECK(lcd_display_rotate(lvgl_display, LV_DISPLAY_ROTATION_90));
 
-    data_hub_init();
-
     // Shown as early as possible, before any of the slower/fallible
-    // hardware bring-up below (UART handshake, WiFi negotiation — the
-    // latter alone can take up to 20s falling back to the setup AP).
-    // data_hub_init() above is this call's only hard prerequisite —
-    // uart_link/web_server are polled through their own refresh timers
-    // via plain static-default reads that are safe to see before that
-    // subsystem's own _init() has even run, so the home/wifi_settings
-    // screens just show "not there yet" until each one catches up.
+    // hardware bring-up below — web_server's WiFi negotiation alone can
+    // take up to 20s falling back to the setup AP. web_server is polled
+    // through wifi_settings_screen's own refresh timer via a plain
+    // static-default read that's safe to see before web_server_init()
+    // has even run, so the screen just shows "Connecting..." until it
+    // catches up.
     ui_init();
-
-    const uart_link_config_t uart_cfg = {
-        .uart_num = UART_NUM_2,
-        .txd_gpio = UART_LINK_TXD,
-        .rxd_gpio = UART_LINK_RXD,
-        .baud_rate = UART_LINK_BAUD,
-    };
-    if (uart_link_init(&uart_cfg) != ESP_OK) {
-        ESP_LOGE(TAG, "uart_link_init failed");
-    }
 
     const rgb_led_config_t rgb_led_cfg = {
         .red_gpio = RGB_LED_RED,

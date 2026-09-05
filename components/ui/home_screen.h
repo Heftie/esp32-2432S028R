@@ -5,10 +5,9 @@ extern "C" {
 #endif
 
 // Default screen: a UTC clock (from web_server_get_wall_clock();
-// "Time not set" until NTP lands) over one tile per data_hub channel,
-// created on first sight and refreshed on a timer. Nothing here assumes
-// a fixed set of channels — the same screen works whether the companion
-// MCU exposes one reading or ten.
+// "Time not set" until NTP lands) and a Settings button. A minimal
+// starting point — wire up your own status/content here as this project
+// grows.
 void home_screen_create(void);
 
 #ifdef __cplusplus

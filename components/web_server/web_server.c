@@ -22,7 +22,6 @@
 #include <mdns.h>
 #include <cJSON.h>
 
-#include "data_hub.h"
 #include "wifi_provision.h"
 
 static const char *TAG = "web_server";
@@ -38,8 +37,7 @@ extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 
 // 0 until an SNTP sync has landed. Once set, any boot-relative
 // esp_timer_get_time() timestamp converts to wall-clock epoch
-// microseconds by adding this offset — used by api_data_handler below to
-// stamp each data_hub sample.
+// microseconds by adding this offset — see web_server_get_wall_clock().
 static volatile int64_t s_boot_epoch_offset_us = 0;
 static volatile bool s_time_synced = false;
 static volatile web_server_time_source_t s_time_source = WEB_SERVER_TIME_UNSET;
@@ -82,7 +80,7 @@ static void start_mdns(void)
         return;
     }
     mdns_hostname_set(CONFIG_WEB_SERVER_MDNS_HOSTNAME);
-    mdns_instance_name_set("CYD Telemetry");
+    mdns_instance_name_set("ESP32 CYD");
     mdns_service_add(NULL, "_http", "_tcp", s_http_port, NULL, 0);
     ESP_LOGI(TAG, "mDNS: http://%s.local", CONFIG_WEB_SERVER_MDNS_HOSTNAME);
 }
@@ -202,34 +200,6 @@ static esp_err_t root_handler(httpd_req_t *req)
     return httpd_resp_send(req, (const char *)index_html_start, index_html_end - index_html_start);
 }
 
-static esp_err_t api_data_handler(httpd_req_t *req)
-{
-    data_hub_channel_info_t channels[DATA_HUB_MAX_CHANNELS];
-    size_t n = data_hub_list_channels(channels, DATA_HUB_MAX_CHANNELS);
-
-    cJSON *root = cJSON_CreateArray();
-    for (size_t i = 0; i < n; i++) {
-        cJSON *item = cJSON_CreateObject();
-        cJSON_AddStringToObject(item, "name", channels[i].name);
-        cJSON_AddNumberToObject(item, "value", channels[i].latest_value);
-        cJSON_AddStringToObject(item, "unit", channels[i].unit);
-        if (s_time_synced) {
-            int64_t epoch_us = channels[i].latest_timestamp_us + s_boot_epoch_offset_us;
-            cJSON_AddNumberToObject(item, "ts_epoch", (double)(epoch_us / 1000000));
-        } else {
-            cJSON_AddNullToObject(item, "ts_epoch");
-        }
-        cJSON_AddItemToArray(root, item);
-    }
-
-    char *json_str = cJSON_PrintUnformatted(root);
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json_str);
-    cJSON_free(json_str);
-    cJSON_Delete(root);
-    return ESP_OK;
-}
-
 // GET /api/time — the device's own wall clock (UTC epoch seconds) and
 // whether it's actually synced yet, from the device's own clock rather
 // than the browser's (which could be skewed from it, especially before
@@ -259,7 +229,6 @@ static esp_err_t start_httpd(void)
 {
     static const httpd_uri_t routes[] = {
         { .uri = "/", .method = HTTP_GET, .handler = root_handler },
-        { .uri = "/api/data", .method = HTTP_GET, .handler = api_data_handler },
         { .uri = "/api/time", .method = HTTP_GET, .handler = api_time_handler },
     };
 
